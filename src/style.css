@@ -408,3 +408,266 @@ body {
     animation: none !important;
   }
 }
+
+.hud-desk {
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.85;
+  margin-top: 0.35rem;
+  text-shadow: 0 0.12rem 0.6rem rgba(0, 0, 0, 0.65);
+}
+
+/* Shout bubble: left/top set by JS to the point above Derick's head */
+.shout {
+  position: absolute;
+  left: 50%;
+  top: 40%;
+  transform: translate(-50%, -100%);
+  padding-bottom: 0.7rem; /* room for the tail */
+  pointer-events: none;
+  z-index: 3;
+}
+
+.shout-bubble {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  max-width: min(90vw, 24rem);
+  min-width: 6rem;
+  padding: 0.55rem 1rem;
+  border-radius: 1rem;
+  background: var(--sand);
+  color: var(--clickr-dark);
+  border: 2px solid var(--clickr-orange);
+  box-shadow: 0 0.4rem 1.2rem rgba(0, 0, 0, 0.45);
+  font-weight: 700;
+  font-size: clamp(0.95rem, 3.2vw, 1.2rem);
+  text-align: center;
+  white-space: nowrap;
+  transform-origin: 50% 100%;
+}
+
+.shout-bubble::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -0.6rem;
+  transform: translateX(-50%);
+  border: 0.6rem solid transparent;
+  border-top-color: var(--clickr-orange);
+  border-bottom: 0;
+}
+
+.shout-combo {
+  font-size: 0.65em;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: var(--clickr-orange);
+}
+
+.shout[data-level="2"] .shout-bubble {
+  font-size: clamp(1.1rem, 3.8vw, 1.45rem);
+  background: #ffe6d1;
+}
+
+.shout[data-level="3"] .shout-bubble {
+  font-size: clamp(1.3rem, 4.6vw, 1.8rem);
+  background: var(--clickr-orange);
+  color: var(--sand);
+  border-color: var(--sand);
+}
+
+.shout[data-level="3"] .shout-bubble::after {
+  border-top-color: var(--sand);
+}
+
+.shout[data-level="3"] .shout-combo {
+  color: var(--clickr-dark);
+}
+
+.shout-bubble.pop {
+  animation: shoutPop 0.22s ease-out;
+}
+
+.shout[data-level="3"] .shout-bubble.pop {
+  animation:
+    shoutPop 0.22s ease-out,
+    shoutShake 0.12s linear 0.22s 4;
+}
+
+@keyframes shoutPop {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes shoutShake {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-4deg) translateX(-2px);
+  }
+  75% {
+    transform: rotate(4deg) translateX(2px);
+  }
+}
+
+/* Finale: "USE THE REPO." slam + confetti */
+.finale {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: start center;
+  padding-top: max(14vh, 11rem); /* sky area: below the HUD, above the cameo signs */
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.finale-text {
+  font-family: "Cinzel", serif;
+  font-weight: 800;
+  font-size: clamp(2.4rem, 11vw, 6rem);
+  text-transform: uppercase;
+  text-align: center;
+  padding: 0 1rem;
+  color: var(--sand);
+  -webkit-text-stroke: 2px var(--clickr-orange);
+  text-shadow:
+    0 0 1.2rem rgba(255, 105, 0, 0.85),
+    0 0.3rem 0 var(--clickr-accent),
+    0 0.6rem 1.5rem rgba(0, 0, 0, 0.6);
+  opacity: 0;
+}
+
+.finale-text.slam {
+  animation: finaleSlam 2.8s cubic-bezier(0.2, 0.9, 0.3, 1.2) forwards;
+}
+
+@keyframes finaleSlam {
+  0% {
+    opacity: 0;
+    transform: scale(3) rotate(-8deg);
+  }
+  14% {
+    opacity: 1;
+    transform: scale(0.92) rotate(2deg);
+  }
+  22% {
+    transform: scale(1.06) rotate(-1deg);
+  }
+  30%,
+  85% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.1) translateY(-12vh);
+  }
+}
+
+.confetti {
+  position: absolute;
+  top: -2rem;
+  width: 0.55rem;
+  height: 0.9rem;
+  border-radius: 0.1rem;
+  animation-name: confettiFall;
+  animation-timing-function: cubic-bezier(0.3, 0.6, 0.6, 1);
+  animation-fill-mode: both;
+}
+
+@keyframes confettiFall {
+  to {
+    transform: translate(var(--drift), 110vh) rotate(var(--spin));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shout-bubble.pop,
+  .shout[data-level="3"] .shout-bubble.pop {
+    animation: none;
+  }
+  .finale-text.slam {
+    animation: finaleFade 2.8s ease forwards;
+  }
+  @keyframes finaleFade {
+    0%,
+    100% {
+      opacity: 0;
+    }
+    15%,
+    85% {
+      opacity: 1;
+    }
+  }
+}
+
+/* Win stats + start-screen cast */
+.stats,
+.cast {
+  list-style: none;
+  display: grid;
+  gap: 0.4rem 1rem;
+  margin-bottom: 1.2rem;
+  text-align: left;
+}
+
+.stats li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.9rem;
+  border-bottom: 1px solid rgba(251, 245, 232, 0.12);
+  padding-bottom: 0.3rem;
+}
+
+.stats strong {
+  color: var(--clickr-orange);
+}
+
+.cast {
+  grid-template-columns: 1fr 1fr;
+  margin: 1.1rem 0 0;
+  font-size: 0.78rem;
+}
+
+.cast li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+}
+
+.cast strong {
+  color: var(--clickr-orange);
+  font-size: 0.85rem;
+}
+
+.cast span {
+  color: rgba(251, 245, 232, 0.8);
+}
+
+@media (max-width: 420px) {
+  .cast {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* These set display, which would otherwise override the hidden attribute */
+.finale[hidden],
+.stats[hidden],
+.cast[hidden] {
+  display: none;
+}

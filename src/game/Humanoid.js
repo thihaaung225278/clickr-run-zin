@@ -122,6 +122,12 @@ export class Humanoid {
       this._pivotRotXTarget = 1.05;
       this._pivotPosYTarget = -0.35;
       this._timeScaleTarget = 0.4;
+    } else if (pose === "sit") {
+      // No sit clip: drop the Idle body into the chair
+      this._fadeTo("Idle");
+      this._pivotRotXTarget = -0.1;
+      this._pivotPosYTarget = -0.45;
+      this._timeScaleTarget = 1;
     } else {
       this._fadeTo("Idle");
       this._pivotRotXTarget = 0;
@@ -260,6 +266,9 @@ export class Humanoid {
     } else if (pose === "jump") {
       this._pivotRotXTarget = -0.1;
       this._pivotPosYTarget = 0;
+    } else if (pose === "sit") {
+      this._pivotRotXTarget = -0.1;
+      this._pivotPosYTarget = -0.45;
     } else {
       this._pivotRotXTarget = 0.08;
       this._pivotPosYTarget = 0;

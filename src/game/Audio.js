@@ -221,6 +221,13 @@ export class GameAudio {
     this._blip(1568, 0.16, "triangle", 0.7, 0.05);
   }
 
+  /** Rising C-major arpeggio for reaching the desk. */
+  playFanfare() {
+    [523, 659, 784].forEach((f, i) => this._blip(f, 0.14, "triangle", 0.8, i * 0.1));
+    this._blip(1046, 0.5, "triangle", 0.9, 0.32);
+    this._blip(1568, 0.45, "sine", 0.5, 0.34);
+  }
+
   playHit() {
     this._noiseBurst(0.25, 0.45);
     this._blip(110, 0.2, "sawtooth", 0.4);

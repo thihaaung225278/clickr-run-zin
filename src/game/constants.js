@@ -30,3 +30,23 @@ export const COLORS = {
   clickrAccent: CLICKR.accent,
   clickrDark: CLICKR.dark,
 };
+
+/** Story: Derick runs to his desk, dodging teammates */
+export const RUNNER = "Derick";
+/** Shout escalates with the dodge combo; highest tier with min <= combo wins. */
+export const SHOUTS = [
+  { min: 1, text: "Have you Claude it yet?" },
+  { min: 3, text: "HAVE YOU CLAUDE IT YET?!" },
+  { min: 5, text: "CLAUDE IT!!!" },
+];
+export const COMBO_WINDOW = 2.5; // seconds between shouts to keep the combo
+export const FINAL_LINE = "Use the repo.";
+export const FINISH_DISTANCE = 1500; // ~100s at current speed curve
+export const TEAMMATES = [
+  { name: "Hanyuan", line: "Bump on this please. Thanks.", reply: "Ok ok, Claude-ing now" },
+  { name: "Seri", line: "Any updates on this?", reply: "Fine, asking Claude" },
+  { name: "Waynn", line: "Walao so many calls today!", reply: "Walao ok lah, Claude it" },
+  { name: "Nicholas", line: "Alamak...", reply: "Alamak... opening Claude" },
+  { name: "Zin", line: "Let me get back to you on this", reply: "Getting back to you... via Claude" },
+  { name: "Tara", line: "alamak ok jap ahhh", reply: "ok jap, Claude-ing ahhh" },
+];

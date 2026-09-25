@@ -1,5 +1,10 @@
 import * as THREE from "three";
-import { COLORS, LANE_X } from "./constants.js";
+import { COLORS, LANE_X, TEAMMATES } from "./constants.js";
+import { labelTexture, makeLabel } from "./labels.js";
+
+const SIGN_W = 2.3; // under lane width (2.4) so a wall of signs doesn't overlap
+const SIGN_H = 0.8;
+const POP_MS = 250;
 
 /**
  * Obstacle kinds:
@@ -7,24 +12,44 @@ import { COLORS, LANE_X } from "./constants.js";
  * - beam: high — must slide
  * - pillar: full lane block — must change lane
  * - coin: collectible
+ *
+ * Every block is a teammate with a floating sign (name + line). Blocks that
+ * share a z form a row: the runner shouts once as he approaches the row, and
+ * each sign flips to the teammate's reply once he is past it.
  */
 export class ObstacleManager {
   constructor(scene) {
     this.scene = scene;
     this.items = [];
+    this.rows = [];
     this._nextSpawnZ = -32;
     this._spawnGap = 18;
     this._box = new THREE.Box3();
+    this._pending = [];
+    this._bag = [];
+    this._lastTeammate = null;
+    this._finishZ = -Infinity;
   }
 
   reset() {
     this.items.forEach((item) => this._dispose(item));
     this.items = [];
+    this.rows = [];
+    this._bag = []; // each run starts a fresh cycle of teammates
     this._nextSpawnZ = -32;
     this._spawnGap = 18;
   }
 
-  update(playerZ, playerHitbox, distance, onCoin, onHit) {
+  /** No patterns spawn within 40 units of the desk (pattern depth + run-up). */
+  setFinish(z) {
+    this._finishZ = z;
+  }
+
+  /**
+   * @param leadDistance shout this far before a row (speed × reaction time)
+   * @param events { onCoin, onHit, onShout, onDodge }
+   */
+  update(playerZ, playerHitbox, distance, leadDistance, events) {
     this.items = this.items.filter((item) => {
       if (item.root.position.z > playerZ + 12) {
         this._dispose(item);
@@ -32,22 +57,33 @@ export class ObstacleManager {
       }
       return true;
     });
+    this.rows = this.rows.filter((row) => row.z <= playerZ + 12);
 
     const ahead = playerZ - 90;
-    while (this._nextSpawnZ > ahead) {
+    while (this._nextSpawnZ > ahead && this._nextSpawnZ > this._finishZ + 40) {
       this._spawnPattern(this._nextSpawnZ);
       // Wider gaps; slow tighten with distance
       const gap = Math.max(14, 20 - distance * 0.004);
       this._nextSpawnZ -= gap;
     }
 
+    for (const row of this.rows) {
+      if (!row.shouted && playerZ - row.z <= leadDistance) {
+        row.shouted = true;
+        events.onShout?.();
+      }
+    }
+
+    const now = performance.now();
     for (const item of this.items) {
       if (item.collected) continue;
 
       if (item.kind === "coin") {
         item.root.rotation.y += 0.05;
         item.root.position.y =
-          item.baseY + Math.sin(performance.now() * 0.006 + item.phase) * 0.12;
+          item.baseY + Math.sin(now * 0.006 + item.phase) * 0.12;
+      } else {
+        this._updateSign(item, playerZ, now, events);
       }
 
       const box = this._bounds(item);
@@ -56,13 +92,28 @@ export class ObstacleManager {
       if (item.kind === "coin") {
         item.collected = true;
         item.root.visible = false;
-        onCoin?.(1);
+        events.onCoin?.(1);
       } else if (this._hitsObstacle(item, playerHitbox)) {
-        onHit?.(item.kind);
+        events.onHit?.(item.kind, item.teammate);
         return true;
       }
     }
     return false;
+  }
+
+  /** Scale up far signs so they read early; flip to the reply once passed. */
+  _updateSign(item, playerZ, now, events) {
+    const z = item.root.position.z;
+    if (!item.replied && playerZ < z - 1) {
+      item.replied = true;
+      item.popAt = now;
+      item.label.material.map = labelTexture(item.teammate.name, item.teammate.reply);
+      events.onDodge?.(item.teammate);
+    }
+    const ahead = playerZ - z;
+    const far = 1 + THREE.MathUtils.clamp((ahead - 15) / 30, 0, 0.6);
+    const pop = 1 + 0.35 * Math.max(0, 1 - (now - item.popAt) / POP_MS);
+    item.label.scale.set(SIGN_W * far * pop, SIGN_H * far * pop, 1);
   }
 
   /** Jump clears barriers; slide clears beams. */
@@ -79,6 +130,41 @@ export class ObstacleManager {
   }
 
   _spawnPattern(z) {
+    this._pending = [];
+    this._spawnObstacles(z);
+    const blocks = this._pending;
+    this._pending = [];
+
+    for (const item of blocks) {
+      const rowZ = item.root.position.z;
+      let row = this.rows.find((r) => r.z === rowZ);
+      if (!row) {
+        row = { z: rowZ, items: [], shouted: false };
+        this.rows.push(row);
+      }
+      row.items.push(item);
+
+      item.teammate = this._nextTeammate();
+      item.label = makeLabel(item.teammate.name, item.teammate.line);
+      // Alternate heights inside a row so neighbouring signs don't collide
+      const y = row.items.length % 2 === 0 ? 3.9 : 2.9;
+      item.label.position.set(item.root.position.x, y, rowZ);
+      item.label.scale.set(SIGN_W, SIGN_H, 1);
+      this.scene.add(item.label);
+    }
+  }
+
+  /** Shuffle-bag: every teammate appears once per cycle, no back-to-back repeat. */
+  _nextTeammate() {
+    if (!this._bag.length) {
+      this._bag = [...TEAMMATES].sort(() => Math.random() - 0.5);
+      if (this._bag[this._bag.length - 1] === this._lastTeammate) this._bag.reverse();
+    }
+    this._lastTeammate = this._bag.pop();
+    return this._lastTeammate;
+  }
+
+  _spawnObstacles(z) {
     const roll = Math.random();
     // Mostly single-lane obstacles + coin stretches
     if (roll < 0.32) {
@@ -248,14 +334,20 @@ export class ObstacleManager {
     });
 
     this.scene.add(root);
-    this.items.push({
+    const item = {
       kind,
       lane,
       root,
       baseY,
       phase: Math.random() * Math.PI * 2,
       collected: false,
-    });
+      teammate: null,
+      label: null,
+      replied: false,
+      popAt: -Infinity,
+    };
+    this.items.push(item);
+    if (kind !== "coin") this._pending.push(item);
   }
 
   _bounds(item) {
@@ -278,6 +370,10 @@ export class ObstacleManager {
   }
 
   _dispose(item) {
+    if (item.label) {
+      this.scene.remove(item.label);
+      item.label.material.dispose(); // map is cached in labels.js, keep it
+    }
     this.scene.remove(item.root);
     item.root.traverse((o) => {
       if (o.geometry) o.geometry.dispose();

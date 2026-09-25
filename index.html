@@ -20,6 +20,7 @@
         <div class="hud-score">
           <span class="hud-label">Score</span>
           <span id="score-value">0</span>
+          <span class="hud-desk">Desk <span id="desk-value">1500</span>m</span>
         </div>
         <div class="hud-right">
           <div class="hud-coins">
@@ -57,6 +58,17 @@
         <p class="credit">created by: <span>Thiha</span></p>
       </div>
 
+      <div id="shout" class="shout" role="status" aria-live="polite" hidden>
+        <div class="shout-bubble">
+          <span class="shout-combo" hidden></span>
+          <span class="shout-text"></span>
+        </div>
+      </div>
+
+      <div id="finale" class="finale" aria-live="assertive" hidden>
+        <p class="finale-text"></p>
+      </div>
+
       <div id="pause-overlay" class="overlay pause-overlay" hidden>
         <div class="panel" role="dialog" aria-labelledby="pause-heading">
           <p class="brand">Paused</p>
@@ -69,11 +81,13 @@
       <div id="overlay" class="overlay">
         <div class="panel" role="dialog" aria-labelledby="title-heading">
           <p class="brand">clickr run</p>
-          <h1 id="title-heading">Ruins Await</h1>
+          <h1 id="title-heading">Have you Claude it yet?</h1>
           <p id="subtitle" class="subtitle">
-            Swipe or use arrows — dodge, jump, slide through the temple path.
+            Derick needs to reach his desk. Dodge the team.
           </p>
+          <ul id="stats" class="stats" aria-label="Run stats" hidden></ul>
           <button id="start-btn" type="button" class="cta">Begin Run</button>
+          <ul id="cast" class="cast" aria-label="The team"></ul>
           <ul class="controls" aria-label="Controls">
             <li><kbd>Space</kbd> start</li>
             <li><kbd>←</kbd><kbd>→</kbd> lanes</li>

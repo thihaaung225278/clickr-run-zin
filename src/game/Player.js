@@ -70,6 +70,15 @@ export class Player {
     }
   }
 
+  /** End of run: cancel jump/slide and ease into the centre lane. */
+  finishRun() {
+    this.state = "run";
+    this.stateTime = 0;
+    this.y = 0;
+    this.humanoid.setPose("run");
+    if (this.lane !== 1) this._beginLaneChange(1);
+  }
+
   _beginLaneChange(nextLane) {
     this._laneFromX = this.root.position.x;
     this.lane = nextLane;

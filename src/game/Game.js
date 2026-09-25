@@ -6,11 +6,28 @@ import { ObstacleManager } from "./ObstacleManager.js";
 import { ChaseCamera } from "./ChaseCamera.js";
 import { UI } from "./UI.js";
 import { GameAudio } from "./Audio.js";
-import { COLORS } from "./constants.js";
+import {
+  COLORS,
+  SHOUTS,
+  COMBO_WINDOW,
+  FINAL_LINE,
+  FINISH_DISTANCE,
+} from "./constants.js";
 import { Starfield } from "./Starfield.js";
+import { Desk, CHAIR_OFFSET } from "./Desk.js";
 
 const BASE_SPEED = 9;
 const MAX_SPEED = 20;
+/** Runner stops at the chair, just short of the desk. */
+const STOP_DISTANCE = FINISH_DISTANCE - CHAIR_OFFSET;
+/** Start braking this far before the chair. */
+const BRAKE_DISTANCE = 12;
+/** Seated pause before the win screen. */
+const WIN_DELAY = 2.8;
+/** Shout this long before reaching a row. */
+const SHOUT_LEAD = 0.35;
+/** Head-bubble anchor above the runner. */
+const HEAD_Y = 2.3;
 
 export class Game {
   constructor(canvas) {
@@ -49,14 +66,35 @@ export class Game {
     this.track = new Track(this.scene);
     this.player = new Player(this.scene);
     this.obstacles = new ObstacleManager(this.scene);
+    this.desk = new Desk(this.scene);
     this.chase = new ChaseCamera(this.camera);
 
-    this.mode = "menu"; // menu | playing | paused | dead
+    this.mode = "menu"; // menu | playing | paused | dead | finishing | won
     this.score = 0;
     this.coins = 0;
     this.distance = 0;
     this.speed = BASE_SPEED;
     this._starting = false;
+    this._decel = 0;
+    this._seatedT = -1; // < 0 until Derick sits
+    this._runT = 0;
+    this._lastShoutT = -Infinity;
+    this._combo = 0;
+    this._head = new THREE.Vector3();
+    this.stats = this._freshStats();
+    // Built once so the per-frame update doesn't allocate closures
+    this._events = {
+      onCoin: (n) => {
+        this.coins += n;
+        this.audio.playCoin();
+      },
+      onHit: (kind, teammate) => this._gameOver(teammate),
+      onShout: () => this._shout(),
+      onDodge: (teammate) => {
+        this.stats.dodged++;
+        this.stats.counts[teammate.name] = (this.stats.counts[teammate.name] || 0) + 1;
+      },
+    };
     this._clock = new THREE.Clock();
     this._raf = 0;
 
@@ -82,7 +120,8 @@ export class Game {
     this.ui.setVolumeUI(this.audio.musicVolume);
     this.ui.setSfxVolumeUI(this.audio.sfxVolume);
     this.ui.setLoading(true);
-    this.player.ready.finally(() => {
+    // Wait for fonts too: teammate labels are drawn to canvas once and cached
+    Promise.allSettled([this.player.ready, document.fonts?.ready]).then(() => {
       this.humanoidIdle();
       this.ui.setLoading(false);
       this.ui.showStart(() => this.start());
@@ -134,16 +173,27 @@ export class Game {
 
       this.track.reset();
       this.obstacles.reset();
+      this.obstacles.setFinish(-FINISH_DISTANCE);
+      this.desk.reset();
       this.player.reset();
       this.input.clear();
       this.score = 0;
       this.coins = 0;
       this.distance = 0;
       this.speed = BASE_SPEED;
+      this._decel = 0;
+      this._seatedT = -1;
+      this._runT = 0;
+      this._lastShoutT = -Infinity;
+      this._combo = 0;
+      this.stats = this._freshStats();
+      this.ui.hideFinale();
+      this.ui.hideShout();
       this.mode = "playing";
       this.chase.reset(this.player.root.position);
       this.ui.showPlaying();
       this.ui.setScore(0, 0);
+      this.ui.setDeskDistance(FINISH_DISTANCE);
       this.ui.setMuteState(this.audio.muted);
       this.ui.setVolumeUI(this.audio.musicVolume);
       this.ui.setSfxVolumeUI(this.audio.sfxVolume);
@@ -181,7 +231,10 @@ export class Game {
     if (e.repeat) return;
 
     // Start / restart from menu or game-over
-    if (e.code === "Space" && (this.mode === "menu" || this.mode === "dead")) {
+    if (
+      e.code === "Space" &&
+      (this.mode === "menu" || this.mode === "dead" || this.mode === "won")
+    ) {
       e.preventDefault();
       if (this.ui.startBtn?.disabled) return;
       this.start();
@@ -222,14 +275,91 @@ export class Game {
     }
   }
 
-  _gameOver() {
+  _freshStats() {
+    return { dodged: 0, shouts: 0, maxCombo: 0, counts: {} };
+  }
+
+  /** Quick dodges in a row escalate the shout. */
+  _shout() {
+    this._combo = this._runT - this._lastShoutT <= COMBO_WINDOW ? this._combo + 1 : 1;
+    this._lastShoutT = this._runT;
+    this.stats.shouts++;
+    this.stats.maxCombo = Math.max(this.stats.maxCombo, this._combo);
+    let level = 0;
+    SHOUTS.forEach((tier, i) => {
+      if (this._combo >= tier.min) level = i;
+    });
+    this.ui.showShout(SHOUTS[level].text, { level: level + 1, combo: this._combo });
+  }
+
+  _winStats() {
+    const [name, count] =
+      Object.entries(this.stats.counts).sort((a, b) => b[1] - a[1])[0] || [];
+    return {
+      ...this.stats,
+      mostDodged: name ? `${name} (${count})` : "nobody",
+      score: this.score,
+      coins: this.coins,
+    };
+  }
+
+  _gameOver(teammate) {
     this.mode = "dead";
     this.player.alive = false;
     this.player.humanoid.setPose("idle");
     this.chase.shake(0.7);
     this.audio.playHit();
     this.audio.stopMusic();
-    this.ui.showGameOver(this.score, this.coins, () => this.start());
+    this.ui.showGameOver(this.score, this.coins, teammate, () => this.start());
+  }
+
+  _beginFinish() {
+    this.mode = "finishing";
+    this.input.clear();
+    this.player.finishRun();
+    const remaining = Math.max(0.01, STOP_DISTANCE - this.distance);
+    // Constant deceleration that lands exactly on the chair at any speed
+    this._decel = (this.speed * this.speed) / (2 * remaining);
+  }
+
+  _updateFinish(dt) {
+    if (this._seatedT >= 0) {
+      this._seatedT += dt;
+      this.player.humanoid.update(dt, 0);
+      this.desk.update(dt);
+      if (this._seatedT >= WIN_DELAY) {
+        this.mode = "won";
+        this.ui.showWin(FINAL_LINE, this._winStats(), () => this.start());
+      }
+      return;
+    }
+
+    const remaining = Math.max(0, STOP_DISTANCE - this.distance);
+    this.speed = Math.min(this.speed, Math.sqrt(2 * this._decel * remaining));
+    const move = Math.min(remaining, this.speed * dt);
+    this.player.root.position.z -= move;
+    this.distance += move;
+    this.score = this.distance * 1.2 + this.coins * 25;
+    this.ui.setScore(this.score, this.coins);
+
+    const speedFactor = Math.max(0, (this.speed - BASE_SPEED) / (MAX_SPEED - BASE_SPEED));
+    this.player.update(dt, speedFactor);
+    this.track.update(this.player.root.position.z);
+    this.ui.setDeskDistance(0);
+
+    if (this.speed < 0.3 || remaining - move <= 0.01) {
+      this.player.root.position.z = -STOP_DISTANCE;
+      this.player.root.position.x = 0;
+      this.distance = STOP_DISTANCE;
+      this.player.humanoid.setPose("sit");
+      this.audio.stopMusic();
+      this.audio.playFanfare();
+      this.ui.hideShout();
+      this.ui.showFinale(FINAL_LINE);
+      this.chase.shake(0.5);
+      this.desk.showCameo(this.camera.aspect);
+      this._seatedT = 0;
+    }
   }
 
   _loop() {
@@ -249,6 +379,7 @@ export class Game {
         }
       }
 
+      this._runT += dt;
       this.speed = Math.min(MAX_SPEED, BASE_SPEED + this.distance * 0.012);
       const move = this.speed * dt;
       this.player.root.position.z -= move;
@@ -263,18 +394,22 @@ export class Game {
         this.player.root.position.z,
         this.player.getHitbox(),
         this.distance,
-        (n) => {
-          this.coins += n;
-          this.audio.playCoin();
-        },
-        () => this._gameOver()
+        this.speed * SHOUT_LEAD,
+        this._events
       );
 
       this.ui.setScore(this.score, this.coins);
+      this.ui.setDeskDistance(Math.max(0, FINISH_DISTANCE - this.distance));
+      if (this.mode === "playing" && STOP_DISTANCE - this.distance <= BRAKE_DISTANCE) {
+        this._beginFinish();
+      }
+    } else if (this.mode === "finishing") {
+      this._updateFinish(dt);
     } else if (this.mode === "paused") {
       // Freeze gameplay; keep rendering last frame pose
     } else {
       this.player.humanoid.update(dt, 0);
+      this.desk.update(dt);
     }
 
     const pp = this.player.root.position;
@@ -288,6 +423,13 @@ export class Game {
     this.stars.update(this._clock.elapsedTime);
 
     this.chase.update(dt, pp, pp.x);
+    if (this.ui.shoutVisible) {
+      this._head.set(pp.x, pp.y + HEAD_Y, pp.z).project(this.camera);
+      this.ui.positionShout(
+        (this._head.x * 0.5 + 0.5) * window.innerWidth,
+        (-this._head.y * 0.5 + 0.5) * window.innerHeight
+      );
+    }
     this.renderer.render(this.scene, this.camera);
   }
 
